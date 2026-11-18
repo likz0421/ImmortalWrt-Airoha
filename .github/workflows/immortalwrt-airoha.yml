@@ -2,7 +2,7 @@ name: ImmortalWrt-Airoha
 
 # 让 Actions 列表直接显示本次选了什么，省得点进去翻日志里的 env 块。
 # 必须写成一行：折叠标量会把缩进更深的续行当字面量，在 ${{ }} 中间插进换行。
-run-name: "${{ inputs.device == 'all' && '全部机型' || inputs.device == 'xg-040g-mf' && 'XG-040G-MF' || inputs.device == 'xg-040g-tf' && 'XG-040G-TF' || inputs.device == 'zn504xg-d' && 'ZN504XG-D' || inputs.device == 'hg5382a' && 'HG5382A' || 'XG-040G-MD' }} · ${{ inputs.repo_branch || 'master-airoha' }} · ${{ inputs.dram_size == 'auto' && '自适应内存' || inputs.dram_size }} · ${{ inputs.device_variant }}${{ inputs.extra_packages != '' && ' · 有附加包' || '' }}${{ inputs.pkg_versions != '' && ' · 指定版本' || '' }}${{ inputs.release == 'prerelease' && ' · pre-release' || inputs.release == 'artifact' && ' · 不发布' || '' }}"
+run-name: "${{ inputs.device == 'all' && '全部机型' || inputs.device == 'xg-040g-mf' && 'XG-040G-MF' || inputs.device == 'xg-040g-tf' && 'XG-040G-TF' || inputs.device == 'zn504xg-d' && 'ZN504XG-D' || inputs.device == 'hg5382a' && 'HG5382A' || inputs.device == 'hm2004-du' && 'HM2004-DU' || 'XG-040G-MD' }} · ${{ inputs.repo_branch || 'master-airoha' }} · ${{ inputs.dram_size == 'auto' && '自适应内存' || inputs.dram_size }} · ${{ inputs.device_variant }}${{ inputs.extra_packages != '' && ' · 有附加包' || '' }}${{ inputs.pkg_versions != '' && ' · 指定版本' || '' }}${{ inputs.release == 'prerelease' && ' · pre-release' || inputs.release == 'artifact' && ' · 不发布' || '' }}"
 
 on:
   workflow_dispatch:
@@ -24,6 +24,7 @@ on:
           - xg-040g-tf
           - zn504xg-d
           - hg5382a
+          - hm2004-du
       device_variant:
         description: '设备变体（ubi 推荐：作者魔改 U-Boot，带网页救砖；stock 保留原厂引导）'
         required: true
@@ -77,7 +78,7 @@ env:
   DEVICE_VARIANT: ${{ github.event.inputs.device_variant }}
   EXTRA_PACKAGES: ${{ github.event.inputs.extra_packages }}
   PKG_VERSIONS: ${{ github.event.inputs.pkg_versions }}
-  REPO_URL: https://github.com/Loong1996/immortalwrt.git
+  REPO_URL: https://github.com/likz0421/immortalwrt.git
   # 只维护 master-airoha 这一条线；输入留空时用它，填别的分支只作测试
   REPO_BRANCH: ${{ github.event.inputs.repo_branch || 'master-airoha' }}
   DEVICE_TARGET: airoha
@@ -99,7 +100,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        device: ${{ fromJSON(inputs.device != 'all' && format('["{0}"]', inputs.device) || inputs.device_variant == 'stock' && '["xg-040g-md","xg-040g-mf"]' || '["xg-040g-md","xg-040g-mf","xg-040g-tf","zn504xg-d","hg5382a"]') }}
+        device: ${{ fromJSON(inputs.device != 'all' && format('["{0}"]', inputs.device) || inputs.device_variant == 'stock' && '["xg-040g-md","xg-040g-mf"]' || '["xg-040g-md","xg-040g-mf","xg-040g-tf","zn504xg-d","hg5382a","hm2004-du"]') }}
     env:
       DEVICE: ${{ matrix.device }}
     # 发布 Release 需要写权限；仅授予 contents，其余 scope 自动为 none
@@ -173,6 +174,7 @@ jobs:
         # 留给 U-Boot 的 fixup 去填。
         case "$DEVICE" in
           zn504xg-d)           DTS_FILTER="zn504xg-d" ;;
+          hm2004-du)           DTS_FILTER="hm2004-du" ;;
           hg5382a)             DTS_FILTER="hg5382a" ;;
           *)                   DTS_FILTER="xg-040g" ;;
         esac
@@ -238,6 +240,11 @@ jobs:
             MODEL_TAG=ZN504XG-D
             CONFIG_FILE=config/zn504xg-d-master.config
             ;;
+          hm2004-du)
+            DEVICE_SUBTARGET=an7581
+            MODEL_TAG=HM2004-DU
+            CONFIG_FILE=config/hm2004-du-master.config
+            ;;
           hg5382a)
             DEVICE_SUBTARGET=an7581
             MODEL_TAG=HG5382A
@@ -253,6 +260,10 @@ jobs:
           zn504xg-d)
             [ "$DEVICE_VARIANT" = "ubi" ] || { echo "::error::ZNXT 只有 ubi 布局（不要选 stock）"; exit 1; }
             DEVICE_SYMBOL=znxt_${DEVICE}-ubi
+            ;;
+          hm2004-du)
+            [ "$DEVICE_VARIANT" = "ubi" ] || { echo "::error::HM2004-DU 只有 ubi 布局（不要选 stock）"; exit 1; }
+            DEVICE_SYMBOL=h3c_${DEVICE}-ubi
             ;;
           hg5382a)
             [ "$DEVICE_VARIANT" = "ubi" ] || { echo "::error::HG5382A 只有 ubi 布局（不要选 stock）"; exit 1; }
@@ -317,6 +328,15 @@ jobs:
               echo "- 自带网页救砖（Airoha Web U-Boot），按住 reset 上电、引导失败或引导菜单第 9 项进入"
               echo "- 硬件按 XG-040G-MD 描述（LAN1 为 2.5G，LAN2~4 为千兆），没有 USB"
               echo "- 没有出厂 MAC，网口使用随机 MAC"
+              ;;
+            h3c_hm2004-du-ubi)
+              echo "- OpenWrt U-Boot 布局：bl2 128K + ubi（Winbond W25N02KV 256 MiB）"
+              echo "- **会替换引导程序**，附件 \`preloader.bin\` 与 \`bl31-uboot.fip\` 需经 USB-TTL 刷入"
+              echo "- 附件 \`*-recovery.itb\` 为 initramfs 救援镜像"
+              echo "- 自带网页救砖（Airoha Web U-Boot），按住 reset 上电、引导失败或引导菜单第 2 项进入"
+              echo "- LAN1 为 2.5G（EN8811H），LAN2~4 为千兆；带一颗 USB2 口；MT7916D 双芯 Wi-Fi"
+              echo "- 板级数据在 1 MiB \`factory\` 卷：用 h3c-factory 工具从原厂 reservearea（mtd14）生成 \`factory-h3c-1mib.bin\`，在恢复页上传写入；不写则网口用随机 MAC、Wi-Fi 起不来"
+              echo "- 从 pbs05/PonWrt 迁移可保留 UBI 结构；从原厂迁移首次须勾「重建 UBI」连同固件与 FIP 一起刷"
               ;;
             fiberhome_hg5382a-ubi)
               echo "- OpenWrt U-Boot 布局：bl2 128K + ubi（并口 NAND，Winbond W29N02KV 256 MiB）"
